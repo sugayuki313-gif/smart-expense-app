@@ -1,0 +1,16 @@
+# ローカル開発用のデータベース（PostgreSQL）
+# .env の DATABASE_URL はこの postgres への接続を想定している
+services:
+  db:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: app
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
