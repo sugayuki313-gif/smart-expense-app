@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 const { PrismaClient } = require("@prisma/client");
 const expensesRouter = require("./routes/expenses");
 const chatRouter = require("./routes/chat");
@@ -67,7 +68,15 @@ seedInitialData();
 app.use("/api", expensesRouter);
 app.use("/api", chatRouter);
 
-// エラーハンドリング（エンドポイントは必ずこれより上に追加する）
+// === フロントエンドの静的ファイル配信設定 ===
+app.use(express.static(path.join(__dirname, "dist")));
+
+// SPA（シングルページアプリケーション）用のフォールバック設定
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "dist", "index.html"));
+});
+
+// エラーハンドリング
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: "サーバーでエラーが発生しました" });
