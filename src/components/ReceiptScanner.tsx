@@ -47,7 +47,12 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
       // リアルなAI読み取り体感のために少し待機
       await new Promise((r) => setTimeout(r, 900));
       const res = await analyzeReceipt(payload);
-      setExtractedData(res.data);
+      
+      // ★ ここで note（備考）を強制的に空欄（""）に設定しています
+      setExtractedData({
+        ...res.data,
+        note: ""
+      });
     } catch (err) {
       console.error(err);
       alert("レシートの読み取りに失敗しました。もう一度お試しください。");
@@ -62,6 +67,7 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
     try {
       await createExpense({
         ...extractedData,
+        note: extractedData.note || "",
         imageUrl: previewImage || undefined
       });
       confetti({
@@ -224,6 +230,20 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
                   <option value="日用品・雑費">日用品・雑費</option>
                 </select>
               </div>
+            </div>
+
+            <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3">
+              <label htmlFor="receipt-note" className="mb-1 block text-xs font-medium text-slate-500">
+                用途・備考
+              </label>
+              <textarea
+                id="receipt-note"
+                rows={2}
+                value={extractedData.note || ""}
+                onChange={(e) => setExtractedData({ ...extractedData, note: e.target.value })}
+                placeholder="購入目的、打ち合わせ内容など"
+                className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 text-xs">
