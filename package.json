@@ -4,6 +4,7 @@
   "scripts": {
     "prestart": "prisma db push",
     "start": "node --watch server.js & vite",
+    "build": "vite build",
     "db:push": "prisma db push",
     "test": "vitest run"
   },
