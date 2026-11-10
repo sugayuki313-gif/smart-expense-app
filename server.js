@@ -71,8 +71,11 @@ app.use("/api", chatRouter);
 // === フロントエンドの静的ファイル配信設定 ===
 app.use(express.static(path.join(__dirname, "dist")));
 
-// SPA（シングルページアプリケーション）用のフォールバック設定（正規表現で安全に指定）
-app.get(/(.*)/, (req, res) => {
+// SPA用のフォールバック設定（ミドルウェアを活用し、ワイルドカードや正規表現エラーを完全に回避）
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api")) {
+    return next();
+  }
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
