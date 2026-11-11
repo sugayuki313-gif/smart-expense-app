@@ -14,11 +14,14 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
   const [extractedData, setExtractedData] = useState<OcrExtractedData | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [selectedSample, setSelectedSample] = useState<SampleReceipt | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   // ファイルアップロードまたはカメラ撮影のハンドラ
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // 同じ画像を続けて選択した場合も onChange が発火するようにする
+    e.target.value = "";
     if (!file) return;
 
     const reader = new FileReader();
@@ -108,17 +111,33 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
 
         <div className="flex items-center space-x-2">
           <button
-            onClick={() => fileInputRef.current?.click()}
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
             className="flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white font-medium px-4 py-2 rounded-xl text-xs sm:text-sm shadow-md transition"
           >
+            <Camera className="w-4 h-4" />
+            <span>カメラで撮影</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => imageInputRef.current?.click()}
+            className="flex items-center space-x-2 bg-white/10 hover:bg-white/20 text-white font-medium px-4 py-2 rounded-xl text-xs sm:text-sm border border-white/20 transition"
+          >
             <Upload className="w-4 h-4" />
-            <span>写真・レシートを選択</span>
+            <span>写真を選択</span>
           </button>
           <input
-            ref={fileInputRef}
+            ref={cameraInputRef}
             type="file"
             accept="image/*"
             capture="environment"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
             onChange={handleFileChange}
             className="hidden"
           />
