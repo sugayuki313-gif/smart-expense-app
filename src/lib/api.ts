@@ -37,10 +37,15 @@ export async function deleteExpense(id: number): Promise<void> {
 }
 
 export async function analyzeReceipt(payload: { rawText?: string; samplePreset?: Partial<Expense>; imageBase64?: string }): Promise<{ success: boolean; data: OcrExtractedData }> {
+  // ★ サーバー側（server.js）が受け取れるように { image: ... } の形にマッピングする
+  const requestBody = payload.imageBase64 
+    ? { image: payload.imageBase64 } 
+    : payload;
+
   const res = await fetch("/api/ocr/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(requestBody)
   });
   if (!res.ok) throw new Error("レシート解析に失敗しました");
   return res.json();
