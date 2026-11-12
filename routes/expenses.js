@@ -1,151 +1,116 @@
-const express = require("express");
-const { PrismaClient } = require("@prisma/client");
-const { analyzeReceiptImage } = require("../lib/ocrEngine");
+const endpoint = process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT;
+const key = process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY;
 
-const prisma = new PrismaClient();
-const router = express.Router();
+const CATEGORY_RULES = [
+  { category: "飲食費・交際費", keywords: ["カフェ", "珈琲", "スターバックス", "ドトール", "レストラン", "居酒屋", "焼肉", "寿司", "ランチ", "ディナー", "弁当", "マクドナルド", "すき家", "ガスト", "食堂", "バー", "喫茶", "飲食", "みよしの"] },
+  { category: "旅費交通費", keywords: ["タクシー", "交通", "JR", "地下鉄", "メトロ", "新幹線", "特急", "航空", "ANA", "JAL", "駐車場", "タイムズ", "ETC", "ガソリン", "ENEOS", "出光", "バス"] },
+  { category: "消耗品費", keywords: ["文具", "ダイソー", "セリア", "ロフト", "ハンズ", "事務", "アスクル", "オフィス", "カインズ", "ニトリ", "無印良品", "ヨドバシ", "ビックカメラ", "ヤマダ", "PC", "ケーブル", "電池", "用紙"] },
+  { category: "会議費", keywords: ["貸会議室", "コワーキング", "ミーティング", "スペース", "Zoom"] },
+  { category: "通信費", keywords: ["NTT", "ソフトバンク", "ドコモ", "au", "郵便", "切手", "レターパック", "ヤマト", "佐川", "通信", "Wi-Fi"] },
+  { category: "書籍・研修費", keywords: ["書店", "本", "ブックス", "紀伊國屋", "丸善", "ジュンク堂", "セミナー", "講習", "講座", "技術評論社"] },
+  { category: "日用品・雑費", keywords: ["コンビニ", "セブン", "ローソン", "ファミリーマート", "ドラッグ", "マツモトキヨシ", "ウエルシア", "薬局", "スーパー", "イオン"] }
+];
 
-// 経費一覧取得
-router.get("/expenses", async (req, res) => {
-  const { category, month, search } = req.query;
-  const where = {};
-
-  if (category && category !== "all") {
-    where.category = category;
-  }
-  if (month && month !== "all") {
-    where.date = {
-      startsWith: month
-    };
-  }
-  if (search) {
-    where.OR = [
-      { merchant: { contains: search, mode: "insensitive" } },
-      { note: { contains: search, mode: "insensitive" } },
-      { invoiceNumber: { contains: search, mode: "insensitive" } }
-    ];
+async function analyzeReceiptImage(imageBase64) {
+  if (!endpoint || !key) {
+    throw new Error("Azure Document Intelligence の環境変数が設定されていません。");
   }
 
-  const expenses = await prisma.expense.findMany({
-    where,
-    orderBy: { date: "desc" }
+  const cleanEndpoint = endpoint.replace(/\/$/, "");
+  // Form Recognizer / Document Intelligence の正式なパス（/formrecognizer/documentModels/...）に変更
+  const analyzeUrl = `${cleanEndpoint}/formrecognizer/documentModels/prebuilt-receipt:analyze?api-version=2023-07-31`;
+
+  console.log("=== Direct Fetch OCR Request (FormRecognizer Path) ===");
+  console.log("URL:", analyzeUrl);
+
+  const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
+  const buffer = Buffer.from(base64Data, "base64");
+
+  const response = await fetch(analyzeUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Ocp-Apim-Subscription-Key": key
+    },
+    body: buffer
   });
 
-  // カテゴリ集計・サマリー計算
-  const allExpenses = await prisma.expense.findMany();
-  const totalAmount = allExpenses.reduce((sum, item) => sum + item.amount, 0);
-  const totalCount = allExpenses.length;
+  if (response.status !== 202) {
+    const errorText = await response.text();
+    throw new Error(`Azure OCR分析の開始に失敗しました (Status ${response.status}): ${errorText}`);
+  }
 
-  const categorySummary = {};
-  allExpenses.forEach(exp => {
-    categorySummary[exp.category] = (categorySummary[exp.category] || 0) + exp.amount;
-  });
+  const operationLocation = response.headers.get("operation-location");
+  if (!operationLocation) {
+    throw new Error("AzureからオペレーションURLを取得できませんでした。");
+  }
 
-  res.json({
-    expenses,
-    summary: {
-      totalAmount,
-      totalCount,
-      categorySummary
-    }
-  });
-});
+  let pollStatus = "running";
+  let resultData = null;
 
-// 経費新規作成
-router.post("/expenses", async (req, res) => {
-  const { date, merchant, amount, category, taxRate, invoiceNumber, imageUrl, note, status, paymentMethod } = req.body;
-  
-  const newExpense = await prisma.expense.create({
-    data: {
-      date: date || new Date().toISOString().split("T")[0],
-      merchant: merchant || "取引先",
-      amount: parseInt(amount, 10) || 0,
-      category: category || "消耗品費",
-      taxRate: parseInt(taxRate, 10) || 10,
-      invoiceNumber: invoiceNumber || null,
-      imageUrl: imageUrl || null,
-      note: note || null,
-      status: status || "confirmed",
-      paymentMethod: paymentMethod || "credit_card"
-    }
-  });
+  for (let i = 0; i < 15; i++) {
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
-  res.status(201).json(newExpense);
-});
-
-// 経費更新
-router.put("/expenses/:id", async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  const { date, merchant, amount, category, taxRate, invoiceNumber, imageUrl, note, status, paymentMethod } = req.body;
-
-  const updated = await prisma.expense.update({
-    where: { id },
-    data: {
-      date,
-      merchant,
-      amount: parseInt(amount, 10),
-      category,
-      taxRate: parseInt(taxRate, 10),
-      invoiceNumber,
-      imageUrl,
-      note,
-      status,
-      paymentMethod
-    }
-  });
-
-  res.json(updated);
-});
-
-// 経費削除
-router.delete("/expenses/:id", async (req, res) => {
-  const id = parseInt(req.params.id, 10);
-  await prisma.expense.delete({ where: { id } });
-  res.json({ success: true, message: "削除しました" });
-});
-
-// OCR・レシート解析エンドポイント
-router.post("/ocr/analyze", async (req, res) => {
-  try {
-    const { samplePreset, imageBase64 } = req.body;
-
-    // サンプルプリセット（テスト用ボタン）が指定されている場合はそれを優先
-    if (samplePreset) {
-      return res.json({
-        success: true,
-        data: samplePreset,
-        confidence: 0.99,
-        extractedFields: samplePreset
-      });
-    }
-
-    if (!imageBase64) {
-      return res.status(400).json({ success: false, error: "画像データ（imageBase64）が送信されていません" });
-    }
-
-    // Azure Document Intelligence を使った実際のOCR解析を実行
-    const parsedData = await analyzeReceiptImage(imageBase64);
-    if (imageBase64) {
-      parsedData.imageUrl = imageBase64;
-    }
-
-    res.json({
-      success: true,
-      data: parsedData,
-      confidence: 0.96,
-      extractedFields: {
-        merchant: parsedData.merchant,
-        date: parsedData.date,
-        amount: parsedData.amount,
-        taxRate: parsedData.taxRate,
-        category: parsedData.category,
-        invoiceNumber: parsedData.invoiceNumber
+    const pollResponse = await fetch(operationLocation, {
+      method: "GET",
+      headers: {
+        "Ocp-Apim-Subscription-Key": key
       }
     });
-  } catch (err) {
-    console.error("OCR解析エラー:", err);
-    res.status(500).json({ success: false, error: err.message || "OCRサーバー内部でエラーが発生しました" });
-  }
-});
 
-module.exports = router;
+    const pollJson = await pollResponse.json();
+    pollStatus = pollJson.status;
+
+    if (pollStatus === "succeeded") {
+      resultData = pollJson;
+      break;
+    } else if (pollStatus === "failed") {
+      throw new Error(`Azureでのレシート解析に失敗しました: ${JSON.stringify(pollJson.error)}`);
+    }
+  }
+
+  if (pollStatus !== "succeeded" || !resultData) {
+    throw new Error("Azureでのレシート解析がタイムアウトしました。");
+  }
+
+  const documents = resultData.analyzeResult?.documents;
+  if (!documents || documents.length === 0) {
+    throw new Error("レシートから情報を検出できませんでした。画像が鮮明かご確認ください。");
+  }
+
+  const fields = documents[0].fields || {};
+
+  const merchant = fields.MerchantName?.content || "不明な店舗";
+  const date = fields.TransactionDate?.valueDate || new Date().toISOString().split("T")[0];
+  const amount = fields.Total?.valueNumber || fields.Total?.amount || 0;
+  const invoiceNumber = fields.TaxId?.content || null;
+  
+  let taxRate = 10;
+  if (fields.Items && fields.Items.length > 0) {
+    const item = fields.Items[0].valueObject;
+    if (item?.TaxRate?.valueNumber) {
+      taxRate = Math.round(item.TaxRate.valueNumber * 100);
+    }
+  }
+
+  let category = "消耗品費";
+  for (const rule of CATEGORY_RULES) {
+    if (rule.keywords.some(kw => merchant.includes(kw))) {
+      category = rule.category;
+      break;
+    }
+  }
+
+  return {
+    date,
+    merchant,
+    amount,
+    category,
+    taxRate: taxRate === 8 ? 8 : 10,
+    invoiceNumber,
+    note: "Azure AI Document Intelligence OCR自動解析",
+    paymentMethod: "credit_card"
+  };
+}
+
+module.exports = { analyzeReceiptImage, CATEGORY_RULES };
