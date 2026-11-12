@@ -1,7 +1,9 @@
 const express = require("express");
 const path = require("path");
 const { PrismaClient } = require("@prisma/client");
-const expensesRouter = require("./routes/expenses");
+
+// OCRエンジンのインポート（※こちらはlib/ocrEngine.jsが存在するため安全です）
+const { analyzeReceiptImage } = require("./lib/ocrEngine");
 
 const prisma = new PrismaClient();
 const app = express();
@@ -63,13 +65,67 @@ async function seedInitialData() {
 }
 seedInitialData();
 
-// API ルーティング（経費・OCR専用）
-app.use("/api", expensesRouter);
+// ==========================================
+// API ルーティング（server.js内に直接統合）
+// ==========================================
 
-// === フロントエンドの静的ファイル配信設定 ===
+// 1. 経費一覧取得
+app.get("/api/expenses", async (req, res) => {
+  try {
+    const expenses = await prisma.expense.findMany({
+      orderBy: { date: "desc" }
+    });
+    res.json(expenses);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "経費データの取得に失敗しました" });
+  }
+});
+
+// 2. 経費新規登録
+app.post("/api/expenses", async (req, res) => {
+  try {
+    const { date, merchant, amount, category, taxRate, invoiceNumber, note, paymentMethod } = req.body;
+    const newExpense = await prisma.expense.create({
+      data: {
+        date: date || new Date().toISOString().split("T")[0],
+        merchant: merchant || "不明な店舗",
+        amount: Number(amount) || 0,
+        category: category || "消耗品費",
+        taxRate: Number(taxRate) || 10,
+        invoiceNumber: invoiceNumber || null,
+        note: note || "",
+        status: "confirmed",
+        paymentMethod: paymentMethod || "credit_card"
+      }
+    });
+    res.json(newExpense);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "経費の登録に失敗しました" });
+  }
+});
+
+// 3. レシートOCR解析エンドポイント
+app.post("/api/ocr/analyze", async (req, res) => {
+  try {
+    const { image } = req.body;
+    if (!image) {
+      return res.status(400).json({ error: "画像データが送信されていません" });
+    }
+    const result = await analyzeReceiptImage(image);
+    res.json(result);
+  } catch (err) {
+    console.error("OCR解析エラー:", err.message);
+    res.status(500).json({ error: err.message || "OCR解析に失敗しました" });
+  }
+});
+
+// ==========================================
+// フロントエンドの静的ファイル配信 & SPAフォールバック
+// ==========================================
 app.use(express.static(path.join(__dirname, "dist")));
 
-// SPA用のフォールバック設定
 app.use((req, res, next) => {
   if (req.path.startsWith("/api")) {
     return next();
@@ -83,6 +139,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "サーバーでエラーが発生しました" });
 });
 
-app.listen(3000, () => {
-  console.log("API server running at http://localhost:3000/");
-});s
+// サーバー起動
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`API server running at http://localhost:${PORT}/`);
+});
