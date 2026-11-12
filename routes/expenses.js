@@ -1,6 +1,3 @@
-const endpoint = process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT;
-const key = process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY;
-
 const CATEGORY_RULES = [
   { category: "飲食費・交際費", keywords: ["カフェ", "珈琲", "スターバックス", "ドトール", "レストラン", "居酒屋", "焼肉", "寿司", "ランチ", "ディナー", "弁当", "マクドナルド", "すき家", "ガスト", "食堂", "バー", "喫茶", "飲食", "みよしの"] },
   { category: "旅費交通費", keywords: ["タクシー", "交通", "JR", "地下鉄", "メトロ", "新幹線", "特急", "航空", "ANA", "JAL", "駐車場", "タイムズ", "ETC", "ガソリン", "ENEOS", "出光", "バス"] },
@@ -11,13 +8,20 @@ const CATEGORY_RULES = [
   { category: "日用品・雑費", keywords: ["コンビニ", "セブン", "ローソン", "ファミリーマート", "ドラッグ", "マツモトキヨシ", "ウエルシア", "薬局", "スーパー", "イオン"] }
 ];
 
+/**
+ * Azure Document Intelligence を使ったレシート解析メイン関数
+ * （環境変数の動的取得と堅牢なエラーハンドリングを実装）
+ */
 async function analyzeReceiptImage(imageBase64) {
+  // 実行時（リクエスト時）に環境変数を評価（遅延評価）
+  const endpoint = process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT;
+  const key = process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY;
+
   if (!endpoint || !key) {
-    throw new Error("Azure Document Intelligence の環境変数が設定されていません。");
+    throw new Error("Azure Document Intelligence の環境変数が設定されていません。Renderの設定をご確認ください。");
   }
 
   const cleanEndpoint = endpoint.replace(/\/$/, "");
-  // Form Recognizer / Document Intelligence の正式なパス（/formrecognizer/documentModels/...）に変更
   const analyzeUrl = `${cleanEndpoint}/formrecognizer/documentModels/prebuilt-receipt:analyze?api-version=2023-07-31`;
 
   console.log("=== Direct Fetch OCR Request (FormRecognizer Path) ===");
@@ -42,12 +46,13 @@ async function analyzeReceiptImage(imageBase64) {
 
   const operationLocation = response.headers.get("operation-location");
   if (!operationLocation) {
-    throw new Error("AzureからオペレーションURLを取得できませんでした。");
+    throw new Error("AzureからオペレーションURL（追跡用ヘッダー）を取得できませんでした。");
   }
 
   let pollStatus = "running";
   let resultData = null;
 
+  // ポーリング処理（非同期処理の完了を最大15回・約22秒間待機）
   for (let i = 0; i < 15; i++) {
     await new Promise(resolve => setTimeout(resolve, 1500));
 
@@ -65,34 +70,40 @@ async function analyzeReceiptImage(imageBase64) {
       resultData = pollJson;
       break;
     } else if (pollStatus === "failed") {
-      throw new Error(`Azureでのレシート解析に失敗しました: ${JSON.stringify(pollJson.error)}`);
+      throw new Error(`Azureでのレシート解析に失敗しました: ${JSON.stringify(pollJson.error || "詳細不明")}`);
     }
   }
 
   if (pollStatus !== "succeeded" || !resultData) {
-    throw new Error("Azureでのレシート解析がタイムアウトしました。");
+    throw new Error("Azureでのレシート解析がタイムアウトしました。画像サイズやネットワーク状態をご確認ください。");
   }
 
   const documents = resultData.analyzeResult?.documents;
   if (!documents || documents.length === 0) {
-    throw new Error("レシートから情報を検出できませんでした。画像が鮮明かご確認ください。");
+    throw new Error("レシートから有効な情報を検出できませんでした。画像が鮮明かご確認ください。");
   }
 
   const fields = documents[0].fields || {};
 
+  // 各種データの安全な抽出
   const merchant = fields.MerchantName?.content || "不明な店舗";
   const date = fields.TransactionDate?.valueDate || new Date().toISOString().split("T")[0];
   const amount = fields.Total?.valueNumber || fields.Total?.amount || 0;
   const invoiceNumber = fields.TaxId?.content || null;
   
+  // 税率の柔軟な判定
   let taxRate = 10;
-  if (fields.Items && fields.Items.length > 0) {
-    const item = fields.Items[0].valueObject;
-    if (item?.TaxRate?.valueNumber) {
-      taxRate = Math.round(item.TaxRate.valueNumber * 100);
+  if (fields.Items && Array.isArray(fields.Items) && fields.Items.length > 0) {
+    for (const itemObj of fields.Items) {
+      const item = itemObj.valueObject;
+      if (item?.TaxRate?.valueNumber) {
+        taxRate = Math.round(item.TaxRate.valueNumber * 100);
+        break;
+      }
     }
   }
 
+  // カテゴリの自動判定ロジック
   let category = "消耗品費";
   for (const rule of CATEGORY_RULES) {
     if (rule.keywords.some(kw => merchant.includes(kw))) {
