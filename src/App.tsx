@@ -11,7 +11,10 @@ import { useExpenses } from "./hooks/useExpenses";
 import { Expense } from "./types";
 
 export function App() {
-  const { expenses, isLoading, error, reload } = useExpenses();
+  const { expenses: rawExpenses, isLoading, error, reload } = useExpenses();
+  // expenses が必ず配列になるよう安全ガードを適用
+  const expenses = Array.isArray(rawExpenses) ? rawExpenses : [];
+
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
   const [isGeminiOpen, setIsGeminiOpen] = useState(false);
