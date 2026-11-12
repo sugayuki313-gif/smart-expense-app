@@ -64,14 +64,14 @@ async function seedInitialData() {
 }
 seedInitialData();
 
-// API ルーティング
+// API ルーティング（各ルーターモジュールをマウント）
 app.use("/api", expensesRouter);
 app.use("/api", chatRouter);
 
 // === フロントエンドの静的ファイル配信設定 ===
 app.use(express.static(path.join(__dirname, "dist")));
 
-// SPA用のフォールバック設定（ミドルウェアを活用し、ワイルドカードや正規表現エラーを完全に回避）
+// SPA（シングルページアプリケーション）用のフォールバック設定
 app.use((req, res, next) => {
   if (req.path.startsWith("/api")) {
     return next();
@@ -79,9 +79,9 @@ app.use((req, res, next) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
-// エラーハンドリング
+// エラーハンドリング（サーバー内部で予期せぬ例外が発生した際の保護）
 app.use((err, req, res, next) => {
-  console.error(err);
+  console.error("サーバーエラー詳細:", err);
   res.status(500).json({ error: "サーバーでエラーが発生しました" });
 });
 
