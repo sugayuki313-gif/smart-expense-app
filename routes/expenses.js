@@ -1,6 +1,6 @@
 const express = require("express");
 const { PrismaClient } = require("@prisma/client");
-const { analyzeReceiptText } = require("../lib/ocrEngine");
+const { analyzeReceiptImage } = require("../lib/ocrEngine");
 
 const prisma = new PrismaClient();
 const router = express.Router();
@@ -106,27 +106,46 @@ router.delete("/expenses/:id", async (req, res) => {
 
 // OCR・レシート解析エンドポイント
 router.post("/ocr/analyze", async (req, res) => {
-  const { rawText, samplePreset, imageBase64 } = req.body;
+  try {
+    const { samplePreset, imageBase64 } = req.body;
 
-  // OCR解析実行
-  const parsedData = analyzeReceiptText(rawText, samplePreset);
-  if (imageBase64) {
-    parsedData.imageUrl = imageBase64;
-  }
-
-  res.json({
-    success: true,
-    data: parsedData,
-    confidence: 0.96,
-    extractedFields: {
-      merchant: parsedData.merchant,
-      date: parsedData.date,
-      amount: parsedData.amount,
-      taxRate: parsedData.taxRate,
-      category: parsedData.category,
-      invoiceNumber: parsedData.invoiceNumber
+    // サンプルプリセット（テスト用ボタン）が指定されている場合はそれを優先
+    if (samplePreset) {
+      return res.json({
+        success: true,
+        data: samplePreset,
+        confidence: 0.99,
+        extractedFields: samplePreset
+      });
     }
-  });
+
+    if (!imageBase64) {
+      return res.status(400).json({ success: false, error: "画像データ（imageBase64）が送信されていません" });
+    }
+
+    // Azure Document Intelligence を使った実際のOCR解析を実行
+    const parsedData = await analyzeReceiptImage(imageBase64);
+    if (imageBase64) {
+      parsedData.imageUrl = imageBase64;
+    }
+
+    res.json({
+      success: true,
+      data: parsedData,
+      confidence: 0.96,
+      extractedFields: {
+        merchant: parsedData.merchant,
+        date: parsedData.date,
+        amount: parsedData.amount,
+        taxRate: parsedData.taxRate,
+        category: parsedData.category,
+        invoiceNumber: parsedData.invoiceNumber
+      }
+    });
+  } catch (err) {
+    console.error("OCR解析エラー:", err);
+    res.status(500).json({ success: false, error: err.message || "OCRサーバー内部でエラーが発生しました" });
+  }
 });
 
 module.exports = router;
