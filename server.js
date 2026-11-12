@@ -2,7 +2,6 @@ const express = require("express");
 const path = require("path");
 const { PrismaClient } = require("@prisma/client");
 const expensesRouter = require("./routes/expenses");
-const chatRouter = require("./routes/chat");
 
 const prisma = new PrismaClient();
 const app = express();
@@ -64,14 +63,13 @@ async function seedInitialData() {
 }
 seedInitialData();
 
-// API ルーティング（各ルーターモジュールをマウント）
+// API ルーティング（経費・OCR専用）
 app.use("/api", expensesRouter);
-app.use("/api", chatRouter);
 
 // === フロントエンドの静的ファイル配信設定 ===
 app.use(express.static(path.join(__dirname, "dist")));
 
-// SPA（シングルページアプリケーション）用のフォールバック設定
+// SPA用のフォールバック設定
 app.use((req, res, next) => {
   if (req.path.startsWith("/api")) {
     return next();
@@ -79,7 +77,7 @@ app.use((req, res, next) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
-// エラーハンドリング（サーバー内部で予期せぬ例外が発生した際の保護）
+// エラーハンドリング
 app.use((err, req, res, next) => {
   console.error("サーバーエラー詳細:", err);
   res.status(500).json({ error: "サーバーでエラーが発生しました" });
@@ -87,4 +85,4 @@ app.use((err, req, res, next) => {
 
 app.listen(3000, () => {
   console.log("API server running at http://localhost:3000/");
-});
+});s
