@@ -40,7 +40,7 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
     await runOcrAnalysis({ samplePreset: sample.data, rawText: sample.previewImageText });
   };
 
-  // OCR・AI抽出処理の実行
+  // OCR（光学文字認識）・AI抽出処理の実行
   const runOcrAnalysis = async (payload: { rawText?: string; samplePreset?: any; imageBase64?: string }) => {
     setIsScanning(true);
     setExtractedData(null);
@@ -68,7 +68,7 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
     }
   };
 
-  // 確定して経費表に自動登録（エラー内容を詳細に表示するよう改善）
+  // 確定して経費表に自動登録（非同期処理の完了を確実にするウェイトを追加）
   const handleConfirmAndSave = async () => {
     if (!extractedData) return;
     try {
@@ -93,7 +93,11 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
         spread: 70,
         origin: { y: 0.7 }
       });
+
+      // データベースへの書き込み・反映が確実に完了するのを少し（0.3秒）待ってから再読み込み（リロード）を実行
+      await new Promise((r) => setTimeout(r, 300));
       onExpenseAdded();
+
       setExtractedData(null);
       setPreviewImage(null);
       setSelectedSample(null);
@@ -115,7 +119,7 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
             <h2 className="text-base sm:text-lg font-bold flex items-center space-x-2">
               <span>高性能AI レシート・領収書スキャナー</span>
               <span className="text-xs bg-cyan-400 text-slate-950 font-bold px-2 py-0.5 rounded-full">
-                OCR自動解析
+                OCR（光学文字認識）自動解析
               </span>
             </h2>
             <p className="text-xs text-slate-300">
