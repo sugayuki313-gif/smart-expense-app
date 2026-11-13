@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { AlertCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, RefreshCw, Calendar } from "lucide-react";
 import { ExpenseModal } from "./components/ExpenseModal";
 import { ExpenseSummary } from "./components/ExpenseSummary";
 import { ExpenseTable } from "./components/ExpenseTable";
@@ -12,7 +12,7 @@ import { Expense } from "./types";
 
 export function App() {
   const { expenses: rawExpenses, isLoading, error, reload } = useExpenses();
-  // expenses が必ず配列になるよう安全ガードを適用
+  // expenses が必ず配列になるよう安全ガードを適用（モック・サンプルデータは一切含めません）
   const expenses = Array.isArray(rawExpenses) ? rawExpenses : [];
 
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -25,14 +25,33 @@ export function App() {
   const [promptRequest, setPromptRequest] = useState<{ id: number; text: string } | null>(null);
   const promptId = useRef(0);
 
-  const filteredExpenses = useMemo(() => expenses.filter((expense) => {
-    const matchesCategory = selectedCategory === "all" || expense.category === selectedCategory;
-    const matchesMonth = selectedMonth === "all" || expense.date.startsWith(selectedMonth);
-    const query = searchQuery.trim().toLowerCase();
-    const matchesSearch = !query || [expense.merchant, expense.note, expense.invoiceNumber]
-      .some((value) => value?.toLowerCase().includes(query));
-    return matchesCategory && matchesMonth && matchesSearch;
-  }), [expenses, selectedCategory, selectedMonth, searchQuery]);
+  // 登録されているデータから「年月 (YYYY-MM)」のリストを自動抽出して重複を除外・降順ソート
+  const availableMonths = useMemo(() => {
+    const monthsSet = new Set<string>();
+    expenses.forEach((expense) => {
+      if (expense.date && expense.date.length >= 7) {
+        monthsSet.add(expense.date.substring(0, 7)); // "YYYY-MM"
+      }
+    });
+    return Array.from(monthsSet).sort().reverse();
+  }, [expenses]);
+
+  // 月別にフィルタリングされたデータ（サマリー表示用など）
+  const monthFilteredExpenses = useMemo(() => {
+    if (selectedMonth === "all") return expenses;
+    return expenses.filter((expense) => expense.date.startsWith(selectedMonth));
+  }, [expenses, selectedMonth]);
+
+  // すべての条件（カテゴリ・月・検索クエリ）でフィルタリングされたテーブル用データ
+  const filteredExpenses = useMemo(() => {
+    return monthFilteredExpenses.filter((expense) => {
+      const matchesCategory = selectedCategory === "all" || expense.category === selectedCategory;
+      const query = searchQuery.trim().toLowerCase();
+      const matchesSearch = !query || [expense.merchant, expense.note, expense.invoiceNumber]
+        .some((value) => value?.toLowerCase().includes(query));
+      return matchesCategory && matchesSearch;
+    });
+  }, [monthFilteredExpenses, selectedCategory, searchQuery]);
 
   const openNewExpense = () => {
     setEditingExpense(null);
@@ -50,7 +69,14 @@ export function App() {
     setIsGeminiOpen(true);
   };
 
-  const totalAmount = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  // 選択中の月の合計金額（「すべて」選択時は全件の合計）
+  const totalAmount = monthFilteredExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+
+  // "2026-11" のような文字列を "2026年11月" に変換するヘルパー
+  const formatMonthLabel = (yearMonth: string) => {
+    const [year, month] = yearMonth.split("-");
+    return `${year}年${parseInt(month, 10)}月`;
+  };
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900">
@@ -60,7 +86,7 @@ export function App() {
         toggleGemini={() => setIsGeminiOpen((open) => !open)}
         isGeminiOpen={isGeminiOpen}
         totalAmount={totalAmount}
-        totalCount={expenses.length}
+        totalCount={monthFilteredExpenses.length}
       />
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -71,12 +97,51 @@ export function App() {
             <p className="mt-2 text-sm text-slate-500">レシートの記録から支出の確認まで、ここでまとめて管理できます。</p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm">
-            <span className="text-slate-500">登録済み</span>
-            <span className="ml-2 font-bold text-slate-900">{expenses.length}件</span>
+            <span className="text-slate-500">{selectedMonth === "all" ? "総登録" : formatMonthLabel(selectedMonth)}</span>
+            <span className="ml-2 font-bold text-slate-900">{monthFilteredExpenses.length}件</span>
             <span className="mx-2 text-slate-300">/</span>
             <span className="font-bold text-indigo-700">¥{totalAmount.toLocaleString()}</span>
           </div>
         </section>
+
+        {/* 📅 月別アーカイブ・リンク切替タブ */}
+        {availableMonths.length > 0 && (
+          <div className="mb-6 flex flex-wrap items-center gap-2 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex items-center space-x-2 text-xs font-bold text-slate-500 mr-2">
+              <Calendar className="w-4 h-4 text-indigo-600" />
+              <span>月別アーカイブ:</span>
+            </div>
+            <button
+              onClick={() => setSelectedMonth("all")}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                selectedMonth === "all"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              全期間 (すベて)
+            </button>
+            {availableMonths.map((ym) => {
+              const count = expenses.filter((e) => e.date.startsWith(ym)).length;
+              return (
+                <button
+                  key={ym}
+                  onClick={() => setSelectedMonth(ym)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
+                    selectedMonth === ym
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  <span>{formatMonthLabel(ym)}</span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${selectedMonth === ym ? "bg-indigo-500 text-white" : "bg-slate-200 text-slate-600"}`}>
+                    {count}件
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {error && (
           <div role="alert" className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -87,7 +152,7 @@ export function App() {
           </div>
         )}
 
-        <ExpenseSummary expenses={expenses} />
+        <ExpenseSummary expenses={monthFilteredExpenses} />
         <ReceiptScanner onExpenseAdded={() => void reload()} />
         <ExpenseTable
           expenses={filteredExpenses}
