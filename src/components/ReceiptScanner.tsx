@@ -68,15 +68,26 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
     }
   };
 
-  // 確定して経費表に自動登録
+  // 確定して経費表に自動登録（エラー内容を詳細に表示するよう改善）
   const handleConfirmAndSave = async () => {
     if (!extractedData) return;
     try {
-      await createExpense({
-        ...extractedData,
+      console.log("=== 経費データの保存開始 ===", extractedData);
+      
+      const payload = {
+        date: extractedData.date || new Date().toISOString().split("T")[0],
+        merchant: extractedData.merchant || "不明な店舗",
+        amount: Number(extractedData.amount) || 0,
+        category: extractedData.category || "消耗品費",
+        taxRate: Number(extractedData.taxRate) || 10,
+        invoiceNumber: extractedData.invoiceNumber || null,
         note: extractedData.note || "",
-        imageUrl: previewImage || undefined
-      });
+        paymentMethod: "credit_card"
+      };
+
+      const result = await createExpense(payload);
+      console.log("=== 経費データの保存成功 ===", result);
+
       confetti({
         particleCount: 60,
         spread: 70,
@@ -86,9 +97,9 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
       setExtractedData(null);
       setPreviewImage(null);
       setSelectedSample(null);
-    } catch (err) {
-      console.error(err);
-      alert("経費の保存に失敗しました");
+    } catch (err: any) {
+      console.error("=== 経費データの保存失敗 ===", err);
+      alert(`経費の保存に失敗しました: ${err.message || "詳細不明"}`);
     }
   };
 
