@@ -1,7 +1,6 @@
 import { useState, useRef, ChangeEvent } from "react";
-import { Camera, Upload, Sparkles, Check, RefreshCw, CheckCircle2, ArrowRight } from "lucide-react";
+import { Camera, Upload, Check, RefreshCw, CheckCircle2, ArrowRight } from "lucide-react";
 import confetti from "canvas-confetti";
-import { SAMPLE_RECEIPTS, SampleReceipt } from "../lib/sampleReceipts";
 import { analyzeReceipt, createExpense } from "../lib/api";
 import { OcrExtractedData } from "../types";
 
@@ -13,7 +12,6 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
   const [isScanning, setIsScanning] = useState(false);
   const [extractedData, setExtractedData] = useState<OcrExtractedData | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [selectedSample, setSelectedSample] = useState<SampleReceipt | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -27,17 +25,9 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
     reader.onload = async (event) => {
       const base64 = event.target?.result as string;
       setPreviewImage(base64);
-      setSelectedSample(null);
       await runOcrAnalysis({ imageBase64: base64, rawText: file.name });
     };
     reader.readAsDataURL(file);
-  };
-
-  // サンプルレシート選択ハンドラ
-  const handleSelectSample = async (sample: SampleReceipt) => {
-    setSelectedSample(sample);
-    setPreviewImage(null);
-    await runOcrAnalysis({ samplePreset: sample.data, rawText: sample.previewImageText });
   };
 
   // OCR（光学文字認識）・AI抽出処理の実行
@@ -68,7 +58,7 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
     }
   };
 
-  // 確定して経費表に自動登録（非同期処理の完了を確実にするウェイトを追加）
+  // 確定して経費表に自動登録
   const handleConfirmAndSave = async () => {
     if (!extractedData) return;
     try {
@@ -94,13 +84,12 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
         origin: { y: 0.7 }
       });
 
-      // データベースへの書き込み・反映が確実に完了するのを少し（0.3秒）待ってから再読み込み（リロード）を実行
+      // データベースへの書き込み・反映が確実に完了するのを待ってから再読み込みを実行
       await new Promise((r) => setTimeout(r, 300));
       onExpenseAdded();
 
       setExtractedData(null);
       setPreviewImage(null);
-      setSelectedSample(null);
     } catch (err: any) {
       console.error("=== 経費データの保存失敗 ===", err);
       alert(`経費の保存に失敗しました: ${err.message || "詳細不明"}`);
@@ -119,7 +108,7 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
             <h2 className="text-base sm:text-lg font-bold flex items-center space-x-2">
               <span>高性能AI レシート・領収書スキャナー</span>
               <span className="text-xs bg-cyan-400 text-slate-950 font-bold px-2 py-0.5 rounded-full">
-                OCR（光学文字認識）自動解析
+                OCR自動解析
               </span>
             </h2>
             <p className="text-xs text-slate-300">
@@ -164,39 +153,11 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
       </div>
 
       <div className="p-5">
-        {/* サンプル選択クイックバー */}
-        <div className="mb-4">
-          <div className="text-xs font-semibold text-slate-500 mb-2 flex items-center space-x-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-            <span>ワンクリックでお試し（サンプルレシート）:</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {SAMPLE_RECEIPTS.map((sample) => (
-              <button
-                key={sample.id}
-                onClick={() => handleSelectSample(sample)}
-                disabled={isScanning}
-                className={`text-xs px-3 py-1.5 rounded-lg border transition font-medium flex items-center space-x-1.5 ${
-                  selectedSample?.id === sample.id
-                    ? "bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm"
-                    : "bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700"
-                }`}
-              >
-                <span>{sample.name}</span>
-                <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded">
-                  ¥{sample.data.amount.toLocaleString()}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* スキャン進行中アニメーション */}
         {isScanning && (
-          <div className="my-6 p-8 border-2 border-dashed border-indigo-300 rounded-xl bg-indigo-50/50 flex flex-col items-center justify-center text-center">
+          <div className="my-2 p-8 border-2 border-dashed border-indigo-300 rounded-xl bg-indigo-50/50 flex flex-col items-center justify-center text-center">
             <div className="relative">
               <RefreshCw className="w-10 h-10 text-indigo-600 animate-spin" />
-              <Sparkles className="w-5 h-5 text-cyan-500 absolute -top-1 -right-1 animate-ping" />
             </div>
             <p className="mt-3 text-sm font-bold text-indigo-900">AIがレシートを解析中...</p>
             <p className="text-xs text-indigo-600 mt-1">
@@ -207,7 +168,7 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
 
         {/* 抽出結果プレビューと確認フォーム */}
         {extractedData && !isScanning && (
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 sm:p-5 mt-4 animate-in fade-in duration-300">
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 sm:p-5 mt-2 animate-in fade-in duration-300">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
               <div className="flex items-center space-x-2 text-emerald-600 font-bold text-sm">
                 <CheckCircle2 className="w-5 h-5" />

@@ -9,64 +9,8 @@ const prisma = new PrismaClient();
 const app = express();
 app.use(express.json({ limit: "25mb" }));
 
-// 初期サンプルデータの投入（空の場合）
-async function seedInitialData() {
-  try {
-    const count = await prisma.expense.count();
-    if (count === 0) {
-      const today = new Date();
-      const format = (d) => d.toISOString().split("T")[0];
-      const d1 = new Date(today.getTime() - 86400000 * 1);
-      const d2 = new Date(today.getTime() - 86400000 * 3);
-      const d3 = new Date(today.getTime() - 86400000 * 5);
-
-      await prisma.expense.createMany({
-        data: [
-          {
-            date: format(d1),
-            merchant: "スターバックス コーヒー 渋谷店",
-            amount: 680,
-            category: "飲食費・交際費",
-            taxRate: 10,
-            invoiceNumber: "T1010001000123",
-            note: "クライアントとの打ち合わせ・作業カフェ代",
-            status: "confirmed",
-            paymentMethod: "credit_card"
-          },
-          {
-            date: format(d2),
-            merchant: "ヨドバシカメラ 新宿西口本店",
-            amount: 8480,
-            category: "消耗品費",
-            taxRate: 10,
-            invoiceNumber: "T2010001000456",
-            note: "PC用ワイヤレスキーボードおよびHDMIケーブル",
-            status: "confirmed",
-            paymentMethod: "credit_card"
-          },
-          {
-            date: format(d3),
-            merchant: "東京無線タクシー",
-            amount: 3200,
-            category: "旅費交通費",
-            taxRate: 10,
-            invoiceNumber: "T3010001000789",
-            note: "顧客オフィスへの緊急訪問移動",
-            status: "confirmed",
-            paymentMethod: "ic_card"
-          }
-        ]
-      });
-      console.log("初期サンプル経費データを投入しました");
-    }
-  } catch (err) {
-    console.error("シードエラー:", err);
-  }
-}
-seedInitialData();
-
 // ==========================================
-// API ルーティング（server.js内に直接統合）
+// API ルーティング
 // ==========================================
 
 // 1. 経費一覧取得
@@ -106,7 +50,21 @@ app.post("/api/expenses", async (req, res) => {
   }
 });
 
-// 3. レシートOCR解析エンドポイント
+// 3. 経費削除
+app.delete("/api/expenses/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    await prisma.expense.delete({
+      where: { id: Number(id) }
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "経費の削除に失敗しました" });
+  }
+});
+
+// 4. レシートOCR解析エンドポイント
 app.post("/api/ocr/analyze", async (req, res) => {
   try {
     const { image } = req.body;
