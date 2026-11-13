@@ -8,7 +8,24 @@ export async function fetchExpenses(params?: { category?: string; month?: string
 
   const res = await fetch(`/api/expenses?${query.toString()}`);
   if (!res.ok) throw new Error("経費データの取得に失敗しました");
-  return res.json();
+  
+  const rawData = await res.json();
+  // サーバーから配列が返ってきた場合、安全にフロントエンド用の構造に変換する
+  const expenses: Expense[] = Array.isArray(rawData) ? rawData : (rawData.expenses || []);
+  
+  // 集計データの自動計算
+  const totalAmount = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+  const summary: ExpenseSummaryData = {
+    totalAmount,
+    totalCount: expenses.length,
+    averageAmount: expenses.length > 0 ? Math.round(totalAmount / expenses.length) : 0,
+    categoryTotals: expenses.reduce((acc: Record<string, number>, e) => {
+      acc[e.category] = (acc[e.category] || 0) + (e.amount || 0);
+      return acc;
+    }, {})
+  };
+
+  return { expenses, summary };
 }
 
 export async function createExpense(data: Partial<Expense>): Promise<Expense> {
@@ -37,7 +54,6 @@ export async function deleteExpense(id: number): Promise<void> {
 }
 
 export async function analyzeReceipt(payload: { rawText?: string; samplePreset?: Partial<Expense>; imageBase64?: string }): Promise<{ success: boolean; data: OcrExtractedData }> {
-  // ★ サーバー側（server.js）が受け取れるように { image: ... } の形にマッピングする
   const requestBody = payload.imageBase64 
     ? { image: payload.imageBase64 } 
     : payload;
@@ -48,7 +64,13 @@ export async function analyzeReceipt(payload: { rawText?: string; samplePreset?:
     body: JSON.stringify(requestBody)
   });
   if (!res.ok) throw new Error("レシート解析に失敗しました");
-  return res.json();
+  const json = await res.json();
+  
+  // サーバーの返却形式を安全にラップ
+  return {
+    success: true,
+    data: json.data || json
+  };
 }
 
 export async function fetchChatHistory(): Promise<ChatMessage[]> {
