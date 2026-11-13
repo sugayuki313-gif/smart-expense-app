@@ -41,7 +41,7 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
     await runOcrAnalysis({ samplePreset: sample.data, rawText: sample.previewImageText });
   };
 
-  // OCR・AI抽出処理の実行シミュレーション
+  // OCR・AI抽出処理の実行
   const runOcrAnalysis = async (payload: { rawText?: string; samplePreset?: any; imageBase64?: string }) => {
     setIsScanning(true);
     setExtractedData(null);
@@ -51,9 +51,16 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
       await new Promise((r) => setTimeout(r, 900));
       const res = await analyzeReceipt(payload);
       
-      // ★ ここで note（備考）を強制的に空欄（""）に設定しています
+      // ★ サーバーからのレスポンス形式（res または res.data）を吸収して確実にセット
+      const data = res?.data || res || {};
+
       setExtractedData({
-        ...res.data,
+        date: data.date || data.transactionDate || new Date().toISOString().split("T")[0],
+        merchant: data.merchant || data.store || data.storeName || "不明な店舗",
+        amount: Number(data.amount || data.total || data.price || 0),
+        category: data.category || "消耗品費",
+        taxRate: Number(data.taxRate || 10),
+        invoiceNumber: data.invoiceNumber || null,
         note: ""
       });
     } catch (err) {
@@ -200,101 +207,4 @@ export function ReceiptScanner({ onExpenseAdded }: ReceiptScannerProps) {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-4">
-              <div className="bg-white p-3 rounded-lg border border-slate-200">
-                <label className="text-xs text-slate-500 block mb-1 font-medium">利用店名 / 支払先</label>
-                <input
-                  type="text"
-                  value={extractedData.merchant}
-                  onChange={(e) => setExtractedData({ ...extractedData, merchant: e.target.value })}
-                  className="w-full font-bold text-slate-800 bg-transparent focus:outline-none focus:ring-1 focus:ring-indigo-500 rounded px-1"
-                />
-              </div>
-
-              <div className="bg-white p-3 rounded-lg border border-slate-200">
-                <label className="text-xs text-slate-500 block mb-1 font-medium">金額 (税込)</label>
-                <div className="flex items-center space-x-1">
-                  <span className="text-indigo-600 font-bold">¥</span>
-                  <input
-                    type="number"
-                    value={extractedData.amount}
-                    onChange={(e) => setExtractedData({ ...extractedData, amount: parseInt(e.target.value, 10) || 0 })}
-                    className="w-full font-bold text-indigo-600 text-base bg-transparent focus:outline-none focus:ring-1 focus:ring-indigo-500 rounded px-1"
-                  />
-                </div>
-              </div>
-
-              <div className="bg-white p-3 rounded-lg border border-slate-200">
-                <label className="text-xs text-slate-500 block mb-1 font-medium">利用日</label>
-                <input
-                  type="date"
-                  value={extractedData.date}
-                  onChange={(e) => setExtractedData({ ...extractedData, date: e.target.value })}
-                  className="w-full text-slate-700 bg-transparent focus:outline-none focus:ring-1 focus:ring-indigo-500 rounded px-1 font-medium"
-                />
-              </div>
-
-              <div className="bg-white p-3 rounded-lg border border-slate-200">
-                <label className="text-xs text-slate-500 block mb-1 font-medium">勘定科目（AI自動判定）</label>
-                <select
-                  value={extractedData.category}
-                  onChange={(e) => setExtractedData({ ...extractedData, category: e.target.value })}
-                  className="w-full text-slate-800 bg-transparent font-medium focus:outline-none focus:ring-1 focus:ring-indigo-500 rounded"
-                >
-                  <option value="消耗品費">消耗品費</option>
-                  <option value="旅費交通費">旅費交通費</option>
-                  <option value="飲食費・交際費">飲食費・交際費</option>
-                  <option value="会議費">会議費</option>
-                  <option value="通信費">通信費</option>
-                  <option value="書籍・研修費">書籍・研修費</option>
-                  <option value="日用品・雑費">日用品・雑費</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="mb-4 rounded-lg border border-slate-200 bg-white p-3">
-              <label htmlFor="receipt-note" className="mb-1 block text-xs font-medium text-slate-500">
-                用途・備考
-              </label>
-              <textarea
-                id="receipt-note"
-                rows={2}
-                value={extractedData.note || ""}
-                onChange={(e) => setExtractedData({ ...extractedData, note: e.target.value })}
-                placeholder="購入目的、打ち合わせ内容など"
-                className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4 text-xs">
-              <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between">
-                <span className="text-slate-500">インボイス登録番号:</span>
-                <span className="font-mono font-semibold text-slate-700">{extractedData.invoiceNumber || "適格登録なし"}</span>
-              </div>
-              <div className="bg-white p-2.5 rounded-lg border border-slate-200 flex items-center justify-between">
-                <span className="text-slate-500">適用税率:</span>
-                <span className="font-semibold text-slate-700">{extractedData.taxRate}% (標準税率)</span>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-slate-200">
-              <button
-                onClick={() => setExtractedData(null)}
-                className="text-xs px-3 py-2 text-slate-600 hover:bg-slate-200 rounded-lg transition"
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={handleConfirmAndSave}
-                className="flex items-center space-x-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2.5 rounded-xl text-sm shadow-md transition"
-              >
-                <Check className="w-4 h-4" />
-                <span>この内容で経費表に追加する</span>
-                <ArrowRight className="w-4 h-4 ml-1" />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+              <div className="bg-white p-3 rounded-lg border border
