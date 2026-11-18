@@ -1,13 +1,17 @@
 const express = require("express");
 const path = require("path");
 const { PrismaClient } = require("@prisma/client");
+const { GoogleGenAI } = require("@google/genai");
 
-// OCRエンジンのインポート（※こちらはlib/ocrEngine.jsが存在するため安全です）
+// OCRエンジンのインポート
 const { analyzeReceiptImage } = require("./lib/ocrEngine");
 
 const prisma = new PrismaClient();
 const app = express();
 app.use(express.json({ limit: "25mb" }));
+
+// Gemini初期化（環境変数の GEMINI_API_KEY を自動読み込み）
+const ai = new GoogleGenAI();
 
 // ==========================================
 // API ルーティング
@@ -76,6 +80,27 @@ app.post("/api/ocr/analyze", async (req, res) => {
   } catch (err) {
     console.error("OCR解析エラー:", err.message);
     res.status(500).json({ error: err.message || "OCR解析に失敗しました" });
+  }
+});
+
+// 5. Gemini AIチャットエンドポイント
+app.post("/api/chat", async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) {
+      return res.status(400).json({ error: "メッセージが送信されていません" });
+    }
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: message,
+    });
+
+    const reply = response.text || "AIからの応答を取得できませんでした。";
+    res.json({ reply });
+  } catch (err) {
+    console.error("Geminiチャットエラー:", err);
+    res.status(500).json({ error: err.message || "メッセージの送信に失敗しました" });
   }
 });
 
