@@ -91,8 +91,8 @@ app.post("/api/chat", async (req, res) => {
       return res.status(400).json({ error: "メッセージが送信されていません" });
     }
 
-    // モデル名を最新の gemini-3.8-flash に修正
-    const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
+    // 標準的なモデルを指定（必要に応じて gemini-1.5-flash 等を利用）
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const result = await model.generateContent(message);
     const response = await result.response;
     const reply = response.text() || "AIからの応答を取得できませんでした。";
@@ -100,7 +100,13 @@ app.post("/api/chat", async (req, res) => {
     res.json({ reply });
   } catch (err) {
     console.error("Geminiチャットエラー:", err);
-    res.status(500).json({ error: err.message || "メッセージの送信に失敗しました" });
+    // 503エラー（混雑時）などのメッセージをわかりやすく返す
+    const statusCode = err.status || 500;
+    const errorMessage = statusCode === 503 
+      ? "AIサーバーが現在混雑しています。少し時間を置いてから再度お試しください。" 
+      : (err.message || "メッセージの送信に失敗しました");
+    
+    res.status(statusCode).json({ error: errorMessage });
   }
 });
 
