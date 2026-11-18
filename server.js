@@ -1,7 +1,7 @@
 const express = require("express");
 const path = require("path");
 const { PrismaClient } = require("@prisma/client");
-const { GoogleGenAI } = require("@google/genai");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // OCRエンジンのインポート
 const { analyzeReceiptImage } = require("./lib/ocrEngine");
@@ -10,8 +10,8 @@ const prisma = new PrismaClient();
 const app = express();
 app.use(express.json({ limit: "25mb" }));
 
-// Gemini初期化（環境変数の GEMINI_API_KEY を自動読み込み）
-const ai = new GoogleGenAI();
+// Google Generative AI の初期化（環境変数 GEMINI_API_KEY を自動読み込み）
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // ==========================================
 // API ルーティング
@@ -91,12 +91,12 @@ app.post("/api/chat", async (req, res) => {
       return res.status(400).json({ error: "メッセージが送信されていません" });
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: message,
-    });
+    // 最新の軽量モデルを使用してテキストを生成
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const result = await model.generateContent(message);
+    const response = await result.response;
+    const reply = response.text() || "AIからの応答を取得できませんでした。";
 
-    const reply = response.text || "AIからの応答を取得できませんでした。";
     res.json({ reply });
   } catch (err) {
     console.error("Geminiチャットエラー:", err);
