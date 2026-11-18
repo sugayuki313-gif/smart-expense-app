@@ -10,7 +10,7 @@ const prisma = new PrismaClient();
 const app = express();
 app.use(express.json({ limit: "25mb" }));
 
-// Google Generative AI の初期化（環境変数 GEMINI_API_KEY を自動読み込み）
+// Google Generative AI の初期化（ご提示いただいたAPIキーを環境変数経由で安全に読み込みます）
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // ==========================================
@@ -91,7 +91,7 @@ app.post("/api/chat", async (req, res) => {
       return res.status(400).json({ error: "メッセージが送信されていません" });
     }
 
-    // 標準的なモデルを指定（必要に応じて gemini-1.5-flash 等を利用）
+    // 無料枠のデフォルトプロジェクトで最も汎用的に使われる標準モデルを指定
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     const result = await model.generateContent(message);
     const response = await result.response;
@@ -100,7 +100,6 @@ app.post("/api/chat", async (req, res) => {
     res.json({ reply });
   } catch (err) {
     console.error("Geminiチャットエラー:", err);
-    // 503エラー（混雑時）などのメッセージをわかりやすく返す
     const statusCode = err.status || 500;
     const errorMessage = statusCode === 503 
       ? "AIサーバーが現在混雑しています。少し時間を置いてから再度お試しください。" 
