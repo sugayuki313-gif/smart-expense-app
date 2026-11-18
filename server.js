@@ -10,7 +10,7 @@ const prisma = new PrismaClient();
 const app = express();
 app.use(express.json({ limit: "25mb" }));
 
-// Google Generative AI の初期化（ご提示いただいたAPIキーを環境変数経由で安全に読み込みます）
+// Google Generative AI の初期化
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // ==========================================
@@ -91,8 +91,8 @@ app.post("/api/chat", async (req, res) => {
       return res.status(400).json({ error: "メッセージが送信されていません" });
     }
 
-    // 無料枠のデフォルトプロジェクトで最も汎用的に使われる標準モデルを指定
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    // 安定稼働する gemini-2.0-flash を指定
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
     const result = await model.generateContent(message);
     const response = await result.response;
     const reply = response.text() || "AIからの応答を取得できませんでした。";
