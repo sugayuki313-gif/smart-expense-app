@@ -91,8 +91,8 @@ app.post("/api/chat", async (req, res) => {
       return res.status(400).json({ error: "メッセージが送信されていません" });
     }
 
-    // モデル名を gemini-2.5-flash に修正
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    // モデル名を最新の gemini-3.8-flash に修正
+    const model = genAI.getGenerativeModel({ model: "gemini-3.8-flash" });
     const result = await model.generateContent(message);
     const response = await result.response;
     const reply = response.text() || "AIからの応答を取得できませんでした。";
